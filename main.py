@@ -6,17 +6,14 @@ import os
 import logging
 import sqlite3
 
-# Настроим логирование
-logging.basicConfig(level=logging.INFO)  # Устанавливаем уровень логирования
+logging.basicConfig(level=logging.INFO)
 
 bot = Bot(TOKEN)
 dp = Dispatcher(bot)
 
-# Подключение к базе данных SQLite
 conn = sqlite3.connect('download_status.db')
 cursor = conn.cursor()
 
-# Создание таблицы для хранения статусов загрузки, если ее нет
 cursor.execute('''
     CREATE TABLE IF NOT EXISTS download_status (
         url TEXT PRIMARY KEY,
@@ -49,14 +46,14 @@ async def text_message(message: types.Message):
             await bot.send_message(chat_id, f"*Начинаю загрузку видео* : {yt.title}\n"
                                             f"*С канала* : [{yt.author}]({yt.channel_url})", parse_mode="Markdown")
             await download_youtube_video(url, message, bot)
-            # Update download status
+            # If download_youtube_video completes successfully, update download status
             download_status[url] = "Downloaded"
             # Save the links and their status to the database
             save_download_status_to_database()
             # Save the links and their status to a file
             save_download_status_to_file()
     except Exception as e:
-        logging.error(f"An error occurred: {e}")  # Используем logging.error для записи ошибки в лог
+        logging.error(f"An error occurred: {e}") # Use logging.error to log an error
         # Update download status in case of an error
         download_status[url] = "Error"
         await bot.send_message(chat_id, "Произошла ошибка при обработке вашего запроса. Убедитесь, что вы отправили "
@@ -71,13 +68,21 @@ async def download_youtube_video(url, message, bot):
     try:
         yt = YouTube(url)
         stream = yt.streams.filter(progressive=True, file_extension='mp4')
+        video_path = f"{message.chat.id}/{message.chat.id}_{yt.title}"
         stream.get_highest_resolution().download(f'{message.chat.id}', f'{message.chat.id}_{yt.title}')
-        with open(f"{message.chat.id}/{message.chat.id}_{yt.title}", 'rb') as Video:
-            await bot.send_video(message.chat.id, Video, caption="*Ваше видео загружено *", parse_mode="Markdown")
-            os.remove(f"{message.chat.id}/{message.chat.id}_{yt.title}")
+
+        # Check if the file was downloaded successfully
+        if os.path.exists(video_path):
+            with open(video_path, 'rb') as Video:
+                await bot.send_video(message.chat.id, Video, caption="*Ваше видео загружено *", parse_mode="Markdown")
+                os.remove(video_path)
+        else:
+            logging.error(f"Failed to download video from URL: {url}")
+            raise Exception("Failed to download video")
     except Exception as e:
-        logging.error(f"An error occurred during video download: {e}")  # Используем logging.error для записи ошибки в лог
-        await bot.send_message(message.chat.id, "Произошла ошибка при загрузке видео. Пожалуйста, попробуйте еще раз.")
+        logging.error(
+            f"An error occurred during video download: {e}")  # Use logging.error to log an error
+        raise  # Override the exception so it can be handled at the top
 
 
 def save_download_status_to_database():
