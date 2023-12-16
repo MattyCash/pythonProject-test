@@ -5,6 +5,8 @@ from pytube import YouTube
 import os
 import logging
 import sqlite3
+import socket
+import threading
 
 logging.basicConfig(level=logging.INFO)
 
@@ -24,6 +26,27 @@ conn.commit()
 
 # Dictionary to store download status for each link
 download_status = {}
+
+# Socket server configuration
+HOST = '127.0.0.1'
+PORT = 12345
+
+
+def start_socket_server():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_socket:
+        server_socket.bind((HOST, PORT))
+        server_socket.listen()
+        logging.info(f"Socket server listening on {HOST}:{PORT}")
+        while True:
+            conn, addr = server_socket.accept()
+            with conn:
+                logging.info(f"Connected by {addr}")
+                conn.sendall(b'Hello, client!')
+
+
+# Start the socket server in a separate thread
+socket_thread = threading.Thread(target=start_socket_server)
+socket_thread.start()
 
 
 @dp.message_handler(commands=['start'])
@@ -53,7 +76,7 @@ async def text_message(message: types.Message):
             # Save the links and their status to a file
             save_download_status_to_file()
     except Exception as e:
-        logging.error(f"An error occurred: {e}") # Use logging.error to log an error
+        logging.error(f"An error occurred: {e}")  # Use logging.error to log an error
         # Update download status in case of an error
         download_status[url] = "Error"
         await bot.send_message(chat_id, "Произошла ошибка при обработке вашего запроса. Убедитесь, что вы отправили "
